@@ -1,0 +1,401 @@
+<?xml version="1.0" encoding="utf-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+    <id>https://llluchy.github.io</id>
+    <title>Gridea</title>
+    <updated>2025-11-21T05:55:12.421Z</updated>
+    <generator>https://github.com/jpmonette/feed</generator>
+    <link rel="alternate" href="https://llluchy.github.io"/>
+    <link rel="self" href="https://llluchy.github.io/atom.xml"/>
+    <subtitle>温故而知新</subtitle>
+    <logo>https://llluchy.github.io/images/avatar.png</logo>
+    <icon>https://llluchy.github.io/favicon.ico</icon>
+    <rights>All rights reserved 2025, Gridea</rights>
+    <entry>
+        <title type="html"><![CDATA[开机自动录像，自动打包录像文件]]></title>
+        <id>https://llluchy.github.io/post/kai-ji-zi-dong-lu-xiang-zi-dong-da-bao-lu-xiang-wen-jian/</id>
+        <link href="https://llluchy.github.io/post/kai-ji-zi-dong-lu-xiang-zi-dong-da-bao-lu-xiang-wen-jian/">
+        </link>
+        <updated>2025-11-21T05:46:44.000Z</updated>
+        <content type="html"><![CDATA[<p>为了记录自己工作的内容，方便后续出现问题对账，我打算将自己的每日工作都使用OBS录像，录制下来，最开始几天手动开启的录像，但是偶尔会忘，所以会有时间差。<br>
+写一个脚本，通过windows的计划任务启动该脚本，打开OBS，然后调用OBS的Websocket连接，然后开始录像，录像开始后获取到昨日的日期，然后打包昨日的所有录像文件。<br>
+在关机时强制关闭OBS，OBS会自动保存文件</p>
+<p>import os<br>
+import time<br>
+import threading<br>
+import subprocess<br>
+from datetime import datetime, timedelta<br>
+from obswebsocket import obsws, requests<br>
+import zipfile</p>
+<h1 id="配置信息">配置信息</h1>
+<p>CONFIG = {<br>
+'obs_host': &quot;----&quot;,# 你的IP地址<br>
+'obs_port': ----,# 你的端口<br>
+'obs_password': &quot;----&quot;,# 你的密码<br>
+'obs_path': r&quot;----&quot;,  # OBS程序路径<br>
+'obs_working_dir': r&quot;----&quot;,    # OBS工作目录<br>
+'recordings_dir': r&quot;----&quot;,# 你的文件保存路径<br>
+'archive_dir': r&quot;----&quot;,# 你的文件打包后的路径<br>
+'log_file': r&quot;----&quot;# 你的log保存路径<br>
+}</p>
+<p>def log_message(message):<br>
+&quot;&quot;&quot;记录日志&quot;&quot;&quot;<br>
+log_dir = os.path.dirname(CONFIG['log_file'])<br>
+os.makedirs(log_dir, exist_ok=True)</p>
+<pre><code>timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+log_entry = f&quot;[{timestamp}] {message}&quot;
+print(log_entry)
+with open(CONFIG['log_file'], 'a', encoding='utf-8') as f:
+    f.write(log_entry + &quot;\n&quot;)
+</code></pre>
+<p>def is_obs_running():<br>
+&quot;&quot;&quot;检查OBS是否已经在运行&quot;&quot;&quot;<br>
+try:<br>
+import psutil<br>
+for process in psutil.process_iter(['name']):<br>
+if process.info['name'] and 'obs64.exe' in process.info['name'].lower():<br>
+return True<br>
+return False<br>
+except ImportError:<br>
+# 如果没有psutil，使用简单的方法检查<br>
+try:<br>
+result = subprocess.run(['tasklist', '/fi', 'imagename eq obs64.exe'],<br>
+capture_output=True, text=True, creationflags=subprocess.CREATE_NO_WINDOW)<br>
+return 'obs64.exe' in result.stdout<br>
+except:<br>
+# 最后的手段，尝试连接WebSocket<br>
+return check_obs_via_websocket()</p>
+<p>def check_obs_via_websocket():<br>
+&quot;&quot;&quot;通过WebSocket检查OBS是否运行&quot;&quot;&quot;<br>
+try:<br>
+client = obsws(CONFIG['obs_host'], CONFIG['obs_port'], CONFIG['obs_password'])<br>
+client.connect()<br>
+client.disconnect()<br>
+return True<br>
+except:<br>
+return False</p>
+<p>def start_obs_program():<br>
+&quot;&quot;&quot;启动OBS程序（修复工作目录问题）&quot;&quot;&quot;<br>
+try:<br>
+if is_obs_running():<br>
+log_message(&quot;OBS已经在运行中&quot;)<br>
+return True</p>
+<pre><code>    log_message(f&quot;正在启动OBS程序: {CONFIG['obs_path']}&quot;)
+    log_message(f&quot;工作目录: {CONFIG['obs_working_dir']}&quot;)
+    
+    if not os.path.exists(CONFIG['obs_path']):
+        log_message(f&quot;错误：OBS路径不存在: {CONFIG['obs_path']}&quot;)
+        return False
+    
+    if not os.path.exists(CONFIG['obs_working_dir']):
+        log_message(f&quot;错误：OBS工作目录不存在: {CONFIG['obs_working_dir']}&quot;)
+        return False
+    
+    # 启动OBS程序，设置正确的工作目录
+    subprocess.Popen([CONFIG['obs_path']], 
+                    cwd=CONFIG['obs_working_dir'],  # 关键修复：设置工作目录
+                    stdout=subprocess.DEVNULL, 
+                    stderr=subprocess.DEVNULL,
+                    creationflags=subprocess.CREATE_NO_WINDOW)
+    
+    log_message(&quot;OBS启动命令已执行，等待程序启动...&quot;)
+    
+    # 等待OBS完全启动
+    for i in range(15):  # 最多等待30秒
+        time.sleep(2)
+        if check_obs_via_websocket():
+            log_message(&quot;OBS程序启动成功&quot;)
+            return True
+        log_message(f&quot;等待OBS启动... ({i+1}/15)&quot;)
+    
+    log_message(&quot;警告：OBS启动可能较慢或失败，但继续尝试连接&quot;)
+    return False
+    
+except Exception as e:
+    log_message(f&quot;启动OBS程序时出错: {e}&quot;)
+    return False
+</code></pre>
+<p>def get_obs_status(client):<br>
+&quot;&quot;&quot;获取OBS状态信息&quot;&quot;&quot;<br>
+try:<br>
+stream_status = client.call(requests.GetStreamStatus())<br>
+record_status = client.call(requests.GetRecordStatus())<br>
+stats = client.call(requests.GetStats())</p>
+<pre><code>    status_info = {
+        'streaming': stream_status.datain['outputActive'],
+        'recording': record_status.datain['outputActive'],
+        'cpu_usage': stats.datain['cpuUsage'],
+        'fps': stats.datain['activeFps']
+    }
+    
+    return status_info
+    
+except Exception as e:
+    log_message(f&quot;获取OBS状态时出错: {e}&quot;)
+    return None
+</code></pre>
+<p>def start_recording():<br>
+&quot;&quot;&quot;启动OBS并开始录像&quot;&quot;&quot;<br>
+try:<br>
+# 1. 首先启动OBS程序<br>
+if not start_obs_program():<br>
+log_message(&quot;OBS程序启动失败，尝试直接连接WebSocket&quot;)</p>
+<pre><code>    # 2. 等待一下让OBS完全初始化
+    time.sleep(5)
+    
+    log_message(&quot;正在连接到OBS WebSocket...&quot;)
+    client = obsws(CONFIG['obs_host'], CONFIG['obs_port'], CONFIG['obs_password'])
+    client.connect()
+    log_message(&quot;成功连接到OBS&quot;)
+    
+    # 获取当前状态
+    status = get_obs_status(client)
+    if status:
+        log_message(f&quot;OBS状态 - 录像: {status['recording']}, 流媒体: {status['streaming']}, CPU: {status['cpu_usage']:.1f}%&quot;)
+    
+    # 如果不在录像，则开始录像
+    if status and not status['recording']:
+        client.call(requests.StartRecord())
+        log_message(&quot;开始录像&quot;)
+        
+        # 等待并验证录像是否真正开始
+        for i in range(5):
+            time.sleep(2)
+            new_status = get_obs_status(client)
+            if new_status and new_status['recording']:
+                log_message(&quot;录像确认已成功启动&quot;)
+                break
+            elif i == 4:
+                log_message(&quot;警告：录像启动可能较慢或失败&quot;)
+    else:
+        log_message(&quot;OBS已经在录像中&quot;)
+    
+    client.disconnect()
+    log_message(&quot;OBS WebSocket连接已断开&quot;)
+    return True
+    
+except Exception as e:
+    log_message(f&quot;启动录像时出错: {e}&quot;)
+    return False
+</code></pre>
+<p>def archive_previous_day_recordings():<br>
+&quot;&quot;&quot;归档前一天的录像文件&quot;&quot;&quot;<br>
+archive_complete = threading.Event()<br>
+archive_success = False</p>
+<pre><code>def archive_task():
+    nonlocal archive_success
+    try:
+        # 计算昨天日期
+        yesterday = (datetime.now() - timedelta(days=1)).strftime('%Y-%m-%d')
+        archive_name = f&quot;{yesterday}_工作录像.zip&quot;
+        archive_path = os.path.join(CONFIG['archive_dir'], archive_name)
+        
+        # 确保归档目录存在
+        os.makedirs(CONFIG['archive_dir'], exist_ok=True)
+        
+        log_message(f&quot;开始归档前一天的录像文件: {yesterday}&quot;)
+        
+        # 查找昨天的文件
+        files_to_archive = []
+        if os.path.exists(CONFIG['recordings_dir']):
+            for filename in os.listdir(CONFIG['recordings_dir']):
+                file_path = os.path.join(CONFIG['recordings_dir'], filename)
+                if os.path.isfile(file_path) and yesterday in filename:
+                    files_to_archive.append(filename)
+        
+        if not files_to_archive:
+            log_message(&quot;未找到需要归档的昨天文件。&quot;)
+            archive_success = True
+            archive_complete.set()
+            return
+        
+        log_message(f&quot;找到 {len(files_to_archive)} 个文件需要归档&quot;)
+        
+        # 创建压缩包
+        try:
+            total_size = 0
+            with zipfile.ZipFile(archive_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
+                for filename in files_to_archive:
+                    file_path = os.path.join(CONFIG['recordings_dir'], filename)
+                    file_size = os.path.getsize(file_path)
+                    total_size += file_size
+                    log_message(f&quot;正在归档: {filename} ({file_size / (1024 * 1024):.2f} MB)&quot;)
+                    zipf.write(file_path, filename)
+            
+            archive_size = os.path.getsize(archive_path)
+            log_message(f&quot;成功创建压缩包: {archive_path}&quot;)
+            log_message(f&quot;原文件总大小: {total_size / (1024 * 1024):.2f} MB&quot;)
+            log_message(f&quot;压缩包大小: {archive_size / (1024 * 1024):.2f} MB&quot;)
+            if total_size &gt; 0:
+                log_message(f&quot;压缩比: {(1 - archive_size/total_size) * 100:.1f}%&quot;)
+            
+            # 压缩成功后删除原文件（谨慎操作！先注释掉进行测试）
+            try:
+                with zipfile.ZipFile(archive_path, 'r') as zipf:
+                    if zipf.testzip() is None:
+                        log_message(&quot;压缩包验证通过，开始删除原文件...&quot;)
+                        for filename in files_to_archive:
+                            file_path = os.path.join(CONFIG['recordings_dir'], filename)
+                            os.remove(file_path)
+                            log_message(f&quot;已删除: {filename}&quot;)
+                        log_message(&quot;原文件已安全删除。&quot;)
+                    else:
+                        log_message(&quot;警告：压缩包验证失败，保留原文件&quot;)
+            except Exception as e:
+                log_message(f&quot;压缩包验证失败: {e}，保留原文件&quot;)
+            
+            archive_success = True
+            
+        except Exception as e:
+            log_message(f&quot;归档过程中出错: {e}&quot;)
+            
+    except Exception as e:
+        log_message(f&quot;归档任务出错: {e}&quot;)
+    finally:
+        archive_complete.set()
+
+# 启动归档线程
+archive_thread = threading.Thread(target=archive_task, daemon=True)
+archive_thread.start()
+log_message(&quot;归档线程已启动&quot;)
+
+# 等待归档完成，但设置超时时间（例如30分钟）
+log_message(&quot;等待归档任务完成...&quot;)
+archive_complete.wait(timeout=1800)  # 30分钟超时
+
+if archive_complete.is_set():
+    if archive_success:
+        log_message(&quot;归档任务成功完成&quot;)
+    else:
+        log_message(&quot;归档任务完成但可能有错误&quot;)
+else:
+    log_message(&quot;警告：归档任务超时，但程序继续运行&quot;)
+
+
+return archive_success
+</code></pre>
+<p>def main():<br>
+&quot;&quot;&quot;主函数&quot;&quot;&quot;<br>
+log_message(&quot;=== OBS自动化脚本开始执行 ===&quot;)</p>
+<pre><code># 1. 启动OBS程序并开始录像
+recording_started = start_recording()
+
+# 2. 录像启动后，开始归档前一天的文件（等待完成）
+if recording_started:
+    log_message(&quot;录像已启动，开始归档任务...&quot;)
+    archive_success = archive_previous_day_recordings()
+    
+    if archive_success:
+        log_message(&quot;=== OBS自动化脚本执行完毕 ===&quot;)
+    else:
+        log_message(&quot;=== OBS自动化脚本执行完毕（归档有警告）===&quot;)
+else:
+    log_message(&quot;=== OBS自动化脚本执行完毕（录像启动失败）===&quot;)
+</code></pre>
+<p>if <strong>name</strong> == &quot;<strong>main</strong>&quot;:<br>
+main()</p>
+]]></content>
+    </entry>
+    <entry>
+        <title type="html"><![CDATA[2025/11/20]]></title>
+        <id>https://llluchy.github.io/post/20251120/</id>
+        <link href="https://llluchy.github.io/post/20251120/">
+        </link>
+        <updated>2025-11-21T01:06:23.000Z</updated>
+        <content type="html"><![CDATA[<p>昨天去健身了，练习的背部，酸痛，这回真的是腰酸背痛了，坐的腰酸，练的背痛。<br>
+一到家琢磨琢磨时间才发现，昨天居然是周四，哈哈哈哈哈，时间过得这么快。<br>
+啊，对，昨天还带博姐去看了一下健身房，一个时刻散发焦虑负面情绪的女人，也就我愿意耐心听一听了，其他人早不想听了，不过她总是嘴不停，真的很缺乏分享。<br>
+健身回来的时候路过酒吧，发现他俩在聊天，估摸是在谈心了，反正我是因为比较绝情了，所以真的感觉这件事不是什么事，对我来说，没钱，没目标才是天塌了，亲人生病也好，去世也好，人生的必然，坦然接受就好了。总感觉是借题发挥，表现出一副忧郁痛苦的样子，一边欺骗自己，一边博取同情。我还是太独了。<br>
+回到今早，气气气，起的那么早，出门的时间那么好，结果赶上了附近学校组织什么破郊游，本来就俩车道，硬是占了一个，我白在后边等了10分钟，浪费我的时间，亏，亏，亏，亏大发了。<br>
+不过还好今天是周五了，放松了，今天还不用健身，计划顺畅，啊，对，下周一还放假呢。太爽了。</p>
+]]></content>
+    </entry>
+    <entry>
+        <title type="html"><![CDATA[2025/11/19]]></title>
+        <id>https://llluchy.github.io/post/20251119/</id>
+        <link href="https://llluchy.github.io/post/20251119/">
+        </link>
+        <updated>2025-11-20T01:09:10.000Z</updated>
+        <content type="html"><![CDATA[<p>今早堵炸了，本来出门就晚，30才出门的，结果还遇到个信号灯就是红灯，可算紧赶慢赶的没迟到。<br>
+昨天白天吭哧吭哧的干活，周二，也没人找我，乐得悠闲，干的迷迷糊糊专注的。<br>
+下单了十日终焉的全套实体书籍，等着到了，下午续听了小说，晚上在酒吧又用文字阅读了。<br>
+心理还是不平静，没有办法沉浸的享受。心理还是有问题的。没办法，基础条件不够好。<br>
+草，装尼玛臭逼，啥鸡毛态度呢。<br>
+晚上酒吧上班，没有啥人，但是心态也累，没得到足够的休息，今天是周三，还得去健身房，暂时还是不得休，看来得找办法从别的地方获取情绪补充。<br>
+行了，就记到这里吧。<br>
+啊，对了，今早主动还各种款，发现最终居然不够了，我这是花了多少啊，又得重新规划规划，节约了</p>
+]]></content>
+    </entry>
+    <entry>
+        <title type="html"><![CDATA[2025/11/18]]></title>
+        <id>https://llluchy.github.io/post/20251118/</id>
+        <link href="https://llluchy.github.io/post/20251118/">
+        </link>
+        <updated>2025-11-19T01:07:45.000Z</updated>
+        <content type="html"><![CDATA[<p>现在还在摸鱼，还在和别人聊天，一早上开了三个聊天窗口，哈哈哈哈。<br>
+好了，开始记录昨天的事吧，有啥说啥。<br>
+昨天工作进度一般，调查了半天解析了半天字符串，再解析清楚，外加沟槽的网络，相当于没干啥。<br>
+白天公司隐匿在角落里静悄悄的工作，没有得到注视，没有得到问话，good，灰常的舒适。<br>
+晚上回家，在上电梯的过程中遇到了博姐，诶，有点显得老态了，没有那么活泼的气场，活力了呢。<br>
+约了在酒吧见面聊天，看得出来了，是真的负面情绪爆表了，一顿输出，想找人聊天，不过，没想到的是，这几个姐姐辈的人，居然互相不认识，哈哈哈哈哈，30多40多的人，打招呼认识，好尴尬啊，尤其是他们还不知道聊啥，我一起身去炸鸡翅，气氛就尴尬了。<br>
+晚上11.30才补完健身，不确定是不是因为这个，晚上回去居然差点失眠了，下次不能赌，吃药，耳塞，整备齐全再睡觉，不然很有可能又是第二天的无精打采。<br>
+接着吗，没啥了，开始今天的工作了，困，但是不能困。</p>
+]]></content>
+    </entry>
+    <entry>
+        <title type="html"><![CDATA[2025/11/17]]></title>
+        <id>https://llluchy.github.io/post/20251117/</id>
+        <link href="https://llluchy.github.io/post/20251117/">
+        </link>
+        <updated>2025-11-18T00:56:38.000Z</updated>
+        <content type="html"><![CDATA[<p>写于第二天早晨。<br>
+昨日是酒吧营业第二日，没啥人，不过也悠闲自得，收拾收拾卫生，打对打对客人，然后运动了一下，也算是从内心上弥补昨天不能健身的空洞吧。<br>
+工作上那个bug的问题解决了，我觉得就是小题大做，不过不想再想它了，不然今天的好心情就没了。<br>
+昨晚晚饭一起吃的小龙虾，我还买了奶茶。我想着今天不要总是让人家请客吃饭，我也得请回来，今天的晚饭就买了。<br>
+有啥写啥，周日那个女生什么时候约出来呢，要不这周五，不过周五就得考虑一大串的活动了，纠结纠结，这是我得记下来，然后做决定。<br>
+今天心情不错，早上开车的时候不急不躁的，其实最近两天心情都不错，因为能够接触到人了吧，人总是要从外部获取能量的，<br>
+啊对了，昨晚破天荒的把单词记了，虽然只是写了一遍，流水般过了一遍脑子，哈哈哈哈，一个没留住。<br>
+没啥了，剩下的，就想起来再写了</p>
+]]></content>
+    </entry>
+    <entry>
+        <title type="html"><![CDATA[随便写点什么]]></title>
+        <id>https://llluchy.github.io/post/sui-bian-xie-dian-shi-me/</id>
+        <link href="https://llluchy.github.io/post/sui-bian-xie-dian-shi-me/">
+        </link>
+        <updated>2025-11-13T05:05:47.000Z</updated>
+        <content type="html"><![CDATA[<p>随便随随便随便</p>
+]]></content>
+    </entry>
+    <entry>
+        <title type="html"><![CDATA[Hello Gridea]]></title>
+        <id>https://llluchy.github.io/post/hello-gridea/</id>
+        <link href="https://llluchy.github.io/post/hello-gridea/">
+        </link>
+        <updated>2018-12-11T16:00:00.000Z</updated>
+        <summary type="html"><![CDATA[<p>👏  欢迎使用 <strong>Gridea</strong> ！<br>
+✍️  <strong>Gridea</strong> 一个静态博客写作客户端。你可以用它来记录你的生活、心情、知识、笔记、创意... ...</p>
+]]></summary>
+        <content type="html"><![CDATA[<p>👏  欢迎使用 <strong>Gridea</strong> ！<br>
+✍️  <strong>Gridea</strong> 一个静态博客写作客户端。你可以用它来记录你的生活、心情、知识、笔记、创意... ...</p>
+<!-- more -->
+<p><a href="https://github.com/getgridea/gridea">Github</a><br>
+<a href="https://gridea.dev/">Gridea 主页</a><br>
+<a href="https://fehey.com/">示例网站</a></p>
+<h2 id="特性">特性👇</h2>
+<p>📝  你可以使用最酷的 <strong>Markdown</strong> 语法，进行快速创作</p>
+<p>🌉  你可以给文章配上精美的封面图和在文章任意位置插入图片</p>
+<p>🏷️  你可以对文章进行标签分组</p>
+<p>📋  你可以自定义菜单，甚至可以创建外部链接菜单</p>
+<p>💻  你可以在 <strong>Windows</strong>，<strong>MacOS</strong> 或 <strong>Linux</strong> 设备上使用此客户端</p>
+<p>🌎  你可以使用 <strong>𝖦𝗂𝗍𝗁𝗎𝖻 𝖯𝖺𝗀𝖾𝗌</strong> 或 <strong>Coding Pages</strong> 向世界展示，未来将支持更多平台</p>
+<p>💬  你可以进行简单的配置，接入 <a href="https://github.com/gitalk/gitalk">Gitalk</a> 或 <a href="https://github.com/SukkaW/DisqusJS">DisqusJS</a> 评论系统</p>
+<p>🇬🇧  你可以使用<strong>中文简体</strong>或<strong>英语</strong></p>
+<p>🌁  你可以任意使用应用内默认主题或任意第三方主题，强大的主题自定义能力</p>
+<p>🖥  你可以自定义源文件夹，利用 OneDrive、百度网盘、iCloud、Dropbox 等进行多设备同步</p>
+<p>🌱 当然 <strong>Gridea</strong> 还很年轻，有很多不足，但请相信，它会不停向前 🏃</p>
+<p>未来，它一定会成为你离不开的伙伴</p>
+<p>尽情发挥你的才华吧！</p>
+<p>😘 Enjoy~</p>
+]]></content>
+    </entry>
+</feed>

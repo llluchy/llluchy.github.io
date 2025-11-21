@@ -1,0 +1,445 @@
+<html>
+  <head>
+    <meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>开机自动录像，自动打包录像文件 | Gridea</title>
+<link rel="shortcut icon" href="https://llluchy.github.io/favicon.ico?v=1763704508630">
+<link href="https://cdn.jsdelivr.net/npm/remixicon@2.3.0/fonts/remixicon.css" rel="stylesheet">
+<link rel="stylesheet" href="https://llluchy.github.io/styles/main.css">
+<link rel="alternate" type="application/atom+xml" title="开机自动录像，自动打包录像文件 | Gridea - Atom Feed" href="https://llluchy.github.io/atom.xml">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Droid+Serif:400,700">
+
+
+
+    <meta name="description" content="为了记录自己工作的内容，方便后续出现问题对账，我打算将自己的每日工作都使用OBS录像，录制下来，最开始几天手动开启的录像，但是偶尔会忘，所以会有时间差。
+写一个脚本，通过windows的计划任务启动该脚本，打开OBS，然后调用OBS的Web..." />
+    <meta name="keywords" content="" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.10.0/katex.min.css">
+    <script src="//cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.5.1/build/highlight.min.js"></script>
+  </head>
+  <body>
+    <div class="main">
+      <div class="main-content">
+        <div class="site-header">
+  <a href="https://llluchy.github.io">
+  <img class="avatar" src="https://llluchy.github.io/images/avatar.png?v=1763704508630" alt="">
+  </a>
+  <h1 class="site-title">
+    Gridea
+  </h1>
+  <p class="site-description">
+    温故而知新
+  </p>
+  <div class="menu-container">
+    
+      
+        <a href="https://llluchy.github.io" class="menu">
+          首页
+        </a>
+      
+    
+      
+        <a href="/archives" class="menu">
+          归档
+        </a>
+      
+    
+      
+        <a href="/tags" class="menu">
+          标签
+        </a>
+      
+    
+      
+        <a href="/post/about" class="menu">
+          关于
+        </a>
+      
+    
+  </div>
+  <div class="social-container">
+    
+      
+    
+      
+    
+      
+    
+      
+    
+      
+    
+  </div>
+</div>
+
+        <div class="post-detail">
+          <article class="post">
+            <h2 class="post-title">
+              开机自动录像，自动打包录像文件
+            </h2>
+            <div class="post-info">
+              <span>
+                2025-11-21
+              </span>
+              <span>
+                9 min read
+              </span>
+              
+            </div>
+            
+            <div class="post-content-wrapper">
+              <div class="post-content" v-pre>
+                <p>为了记录自己工作的内容，方便后续出现问题对账，我打算将自己的每日工作都使用OBS录像，录制下来，最开始几天手动开启的录像，但是偶尔会忘，所以会有时间差。<br>
+写一个脚本，通过windows的计划任务启动该脚本，打开OBS，然后调用OBS的Websocket连接，然后开始录像，录像开始后获取到昨日的日期，然后打包昨日的所有录像文件。<br>
+在关机时强制关闭OBS，OBS会自动保存文件</p>
+<p>import os<br>
+import time<br>
+import threading<br>
+import subprocess<br>
+from datetime import datetime, timedelta<br>
+from obswebsocket import obsws, requests<br>
+import zipfile</p>
+<h1 id="配置信息">配置信息</h1>
+<p>CONFIG = {<br>
+'obs_host': &quot;----&quot;,# 你的IP地址<br>
+'obs_port': ----,# 你的端口<br>
+'obs_password': &quot;----&quot;,# 你的密码<br>
+'obs_path': r&quot;----&quot;,  # OBS程序路径<br>
+'obs_working_dir': r&quot;----&quot;,    # OBS工作目录<br>
+'recordings_dir': r&quot;----&quot;,# 你的文件保存路径<br>
+'archive_dir': r&quot;----&quot;,# 你的文件打包后的路径<br>
+'log_file': r&quot;----&quot;# 你的log保存路径<br>
+}</p>
+<p>def log_message(message):<br>
+&quot;&quot;&quot;记录日志&quot;&quot;&quot;<br>
+log_dir = os.path.dirname(CONFIG['log_file'])<br>
+os.makedirs(log_dir, exist_ok=True)</p>
+<pre><code>timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+log_entry = f&quot;[{timestamp}] {message}&quot;
+print(log_entry)
+with open(CONFIG['log_file'], 'a', encoding='utf-8') as f:
+    f.write(log_entry + &quot;\n&quot;)
+</code></pre>
+<p>def is_obs_running():<br>
+&quot;&quot;&quot;检查OBS是否已经在运行&quot;&quot;&quot;<br>
+try:<br>
+import psutil<br>
+for process in psutil.process_iter(['name']):<br>
+if process.info['name'] and 'obs64.exe' in process.info['name'].lower():<br>
+return True<br>
+return False<br>
+except ImportError:<br>
+# 如果没有psutil，使用简单的方法检查<br>
+try:<br>
+result = subprocess.run(['tasklist', '/fi', 'imagename eq obs64.exe'],<br>
+capture_output=True, text=True, creationflags=subprocess.CREATE_NO_WINDOW)<br>
+return 'obs64.exe' in result.stdout<br>
+except:<br>
+# 最后的手段，尝试连接WebSocket<br>
+return check_obs_via_websocket()</p>
+<p>def check_obs_via_websocket():<br>
+&quot;&quot;&quot;通过WebSocket检查OBS是否运行&quot;&quot;&quot;<br>
+try:<br>
+client = obsws(CONFIG['obs_host'], CONFIG['obs_port'], CONFIG['obs_password'])<br>
+client.connect()<br>
+client.disconnect()<br>
+return True<br>
+except:<br>
+return False</p>
+<p>def start_obs_program():<br>
+&quot;&quot;&quot;启动OBS程序（修复工作目录问题）&quot;&quot;&quot;<br>
+try:<br>
+if is_obs_running():<br>
+log_message(&quot;OBS已经在运行中&quot;)<br>
+return True</p>
+<pre><code>    log_message(f&quot;正在启动OBS程序: {CONFIG['obs_path']}&quot;)
+    log_message(f&quot;工作目录: {CONFIG['obs_working_dir']}&quot;)
+    
+    if not os.path.exists(CONFIG['obs_path']):
+        log_message(f&quot;错误：OBS路径不存在: {CONFIG['obs_path']}&quot;)
+        return False
+    
+    if not os.path.exists(CONFIG['obs_working_dir']):
+        log_message(f&quot;错误：OBS工作目录不存在: {CONFIG['obs_working_dir']}&quot;)
+        return False
+    
+    # 启动OBS程序，设置正确的工作目录
+    subprocess.Popen([CONFIG['obs_path']], 
+                    cwd=CONFIG['obs_working_dir'],  # 关键修复：设置工作目录
+                    stdout=subprocess.DEVNULL, 
+                    stderr=subprocess.DEVNULL,
+                    creationflags=subprocess.CREATE_NO_WINDOW)
+    
+    log_message(&quot;OBS启动命令已执行，等待程序启动...&quot;)
+    
+    # 等待OBS完全启动
+    for i in range(15):  # 最多等待30秒
+        time.sleep(2)
+        if check_obs_via_websocket():
+            log_message(&quot;OBS程序启动成功&quot;)
+            return True
+        log_message(f&quot;等待OBS启动... ({i+1}/15)&quot;)
+    
+    log_message(&quot;警告：OBS启动可能较慢或失败，但继续尝试连接&quot;)
+    return False
+    
+except Exception as e:
+    log_message(f&quot;启动OBS程序时出错: {e}&quot;)
+    return False
+</code></pre>
+<p>def get_obs_status(client):<br>
+&quot;&quot;&quot;获取OBS状态信息&quot;&quot;&quot;<br>
+try:<br>
+stream_status = client.call(requests.GetStreamStatus())<br>
+record_status = client.call(requests.GetRecordStatus())<br>
+stats = client.call(requests.GetStats())</p>
+<pre><code>    status_info = {
+        'streaming': stream_status.datain['outputActive'],
+        'recording': record_status.datain['outputActive'],
+        'cpu_usage': stats.datain['cpuUsage'],
+        'fps': stats.datain['activeFps']
+    }
+    
+    return status_info
+    
+except Exception as e:
+    log_message(f&quot;获取OBS状态时出错: {e}&quot;)
+    return None
+</code></pre>
+<p>def start_recording():<br>
+&quot;&quot;&quot;启动OBS并开始录像&quot;&quot;&quot;<br>
+try:<br>
+# 1. 首先启动OBS程序<br>
+if not start_obs_program():<br>
+log_message(&quot;OBS程序启动失败，尝试直接连接WebSocket&quot;)</p>
+<pre><code>    # 2. 等待一下让OBS完全初始化
+    time.sleep(5)
+    
+    log_message(&quot;正在连接到OBS WebSocket...&quot;)
+    client = obsws(CONFIG['obs_host'], CONFIG['obs_port'], CONFIG['obs_password'])
+    client.connect()
+    log_message(&quot;成功连接到OBS&quot;)
+    
+    # 获取当前状态
+    status = get_obs_status(client)
+    if status:
+        log_message(f&quot;OBS状态 - 录像: {status['recording']}, 流媒体: {status['streaming']}, CPU: {status['cpu_usage']:.1f}%&quot;)
+    
+    # 如果不在录像，则开始录像
+    if status and not status['recording']:
+        client.call(requests.StartRecord())
+        log_message(&quot;开始录像&quot;)
+        
+        # 等待并验证录像是否真正开始
+        for i in range(5):
+            time.sleep(2)
+            new_status = get_obs_status(client)
+            if new_status and new_status['recording']:
+                log_message(&quot;录像确认已成功启动&quot;)
+                break
+            elif i == 4:
+                log_message(&quot;警告：录像启动可能较慢或失败&quot;)
+    else:
+        log_message(&quot;OBS已经在录像中&quot;)
+    
+    client.disconnect()
+    log_message(&quot;OBS WebSocket连接已断开&quot;)
+    return True
+    
+except Exception as e:
+    log_message(f&quot;启动录像时出错: {e}&quot;)
+    return False
+</code></pre>
+<p>def archive_previous_day_recordings():<br>
+&quot;&quot;&quot;归档前一天的录像文件&quot;&quot;&quot;<br>
+archive_complete = threading.Event()<br>
+archive_success = False</p>
+<pre><code>def archive_task():
+    nonlocal archive_success
+    try:
+        # 计算昨天日期
+        yesterday = (datetime.now() - timedelta(days=1)).strftime('%Y-%m-%d')
+        archive_name = f&quot;{yesterday}_工作录像.zip&quot;
+        archive_path = os.path.join(CONFIG['archive_dir'], archive_name)
+        
+        # 确保归档目录存在
+        os.makedirs(CONFIG['archive_dir'], exist_ok=True)
+        
+        log_message(f&quot;开始归档前一天的录像文件: {yesterday}&quot;)
+        
+        # 查找昨天的文件
+        files_to_archive = []
+        if os.path.exists(CONFIG['recordings_dir']):
+            for filename in os.listdir(CONFIG['recordings_dir']):
+                file_path = os.path.join(CONFIG['recordings_dir'], filename)
+                if os.path.isfile(file_path) and yesterday in filename:
+                    files_to_archive.append(filename)
+        
+        if not files_to_archive:
+            log_message(&quot;未找到需要归档的昨天文件。&quot;)
+            archive_success = True
+            archive_complete.set()
+            return
+        
+        log_message(f&quot;找到 {len(files_to_archive)} 个文件需要归档&quot;)
+        
+        # 创建压缩包
+        try:
+            total_size = 0
+            with zipfile.ZipFile(archive_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
+                for filename in files_to_archive:
+                    file_path = os.path.join(CONFIG['recordings_dir'], filename)
+                    file_size = os.path.getsize(file_path)
+                    total_size += file_size
+                    log_message(f&quot;正在归档: {filename} ({file_size / (1024 * 1024):.2f} MB)&quot;)
+                    zipf.write(file_path, filename)
+            
+            archive_size = os.path.getsize(archive_path)
+            log_message(f&quot;成功创建压缩包: {archive_path}&quot;)
+            log_message(f&quot;原文件总大小: {total_size / (1024 * 1024):.2f} MB&quot;)
+            log_message(f&quot;压缩包大小: {archive_size / (1024 * 1024):.2f} MB&quot;)
+            if total_size &gt; 0:
+                log_message(f&quot;压缩比: {(1 - archive_size/total_size) * 100:.1f}%&quot;)
+            
+            # 压缩成功后删除原文件（谨慎操作！先注释掉进行测试）
+            try:
+                with zipfile.ZipFile(archive_path, 'r') as zipf:
+                    if zipf.testzip() is None:
+                        log_message(&quot;压缩包验证通过，开始删除原文件...&quot;)
+                        for filename in files_to_archive:
+                            file_path = os.path.join(CONFIG['recordings_dir'], filename)
+                            os.remove(file_path)
+                            log_message(f&quot;已删除: {filename}&quot;)
+                        log_message(&quot;原文件已安全删除。&quot;)
+                    else:
+                        log_message(&quot;警告：压缩包验证失败，保留原文件&quot;)
+            except Exception as e:
+                log_message(f&quot;压缩包验证失败: {e}，保留原文件&quot;)
+            
+            archive_success = True
+            
+        except Exception as e:
+            log_message(f&quot;归档过程中出错: {e}&quot;)
+            
+    except Exception as e:
+        log_message(f&quot;归档任务出错: {e}&quot;)
+    finally:
+        archive_complete.set()
+
+# 启动归档线程
+archive_thread = threading.Thread(target=archive_task, daemon=True)
+archive_thread.start()
+log_message(&quot;归档线程已启动&quot;)
+
+# 等待归档完成，但设置超时时间（例如30分钟）
+log_message(&quot;等待归档任务完成...&quot;)
+archive_complete.wait(timeout=1800)  # 30分钟超时
+
+if archive_complete.is_set():
+    if archive_success:
+        log_message(&quot;归档任务成功完成&quot;)
+    else:
+        log_message(&quot;归档任务完成但可能有错误&quot;)
+else:
+    log_message(&quot;警告：归档任务超时，但程序继续运行&quot;)
+
+
+return archive_success
+</code></pre>
+<p>def main():<br>
+&quot;&quot;&quot;主函数&quot;&quot;&quot;<br>
+log_message(&quot;=== OBS自动化脚本开始执行 ===&quot;)</p>
+<pre><code># 1. 启动OBS程序并开始录像
+recording_started = start_recording()
+
+# 2. 录像启动后，开始归档前一天的文件（等待完成）
+if recording_started:
+    log_message(&quot;录像已启动，开始归档任务...&quot;)
+    archive_success = archive_previous_day_recordings()
+    
+    if archive_success:
+        log_message(&quot;=== OBS自动化脚本执行完毕 ===&quot;)
+    else:
+        log_message(&quot;=== OBS自动化脚本执行完毕（归档有警告）===&quot;)
+else:
+    log_message(&quot;=== OBS自动化脚本执行完毕（录像启动失败）===&quot;)
+</code></pre>
+<p>if <strong>name</strong> == &quot;<strong>main</strong>&quot;:<br>
+main()</p>
+
+              </div>
+              <div class="toc-container">
+                <ul class="markdownIt-TOC">
+<li><a href="#%E9%85%8D%E7%BD%AE%E4%BF%A1%E6%81%AF">配置信息</a></li>
+</ul>
+
+              </div>
+            </div>
+          </article>
+        </div>
+
+        
+          <div class="next-post">
+            <div class="next">下一篇</div>
+            <a href="https://llluchy.github.io/post/20251120/">
+              <h3 class="post-title">
+                2025/11/20
+              </h3>
+            </a>
+          </div>
+        
+
+        
+
+        <div class="site-footer">
+  Powered by <a href="https://github.com/getgridea/gridea" target="_blank">Gridea</a>
+  <a class="rss" href="https://llluchy.github.io/atom.xml" target="_blank">
+    <i class="ri-rss-line"></i> RSS
+  </a>
+</div>
+
+      </div>
+    </div>
+
+    <script>
+      hljs.initHighlightingOnLoad()
+
+      let mainNavLinks = document.querySelectorAll(".markdownIt-TOC a");
+
+      // This should probably be throttled.
+      // Especially because it triggers during smooth scrolling.
+      // https://lodash.com/docs/4.17.10#throttle
+      // You could do like...
+      // window.addEventListener("scroll", () => {
+      //    _.throttle(doThatStuff, 100);
+      // });
+      // Only not doing it here to keep this Pen dependency-free.
+
+      window.addEventListener("scroll", event => {
+        let fromTop = window.scrollY;
+
+        mainNavLinks.forEach((link, index) => {
+          let section = document.getElementById(decodeURI(link.hash).substring(1));
+          let nextSection = null
+          if (mainNavLinks[index + 1]) {
+            nextSection = document.getElementById(decodeURI(mainNavLinks[index + 1].hash).substring(1));
+          }
+          if (section.offsetTop <= fromTop) {
+            if (nextSection) {
+              if (nextSection.offsetTop > fromTop) {
+                link.classList.add("current");
+              } else {
+                link.classList.remove("current");    
+              }
+            } else {
+              link.classList.add("current");
+            }
+          } else {
+            link.classList.remove("current");
+          }
+        });
+      });
+
+    </script>
+  </body>
+</html>

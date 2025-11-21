@@ -1,0 +1,174 @@
+<html>
+  <head>
+    <meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>2025/11/19 | Gridea</title>
+<link rel="shortcut icon" href="https://llluchy.github.io/favicon.ico?v=1763704508630">
+<link href="https://cdn.jsdelivr.net/npm/remixicon@2.3.0/fonts/remixicon.css" rel="stylesheet">
+<link rel="stylesheet" href="https://llluchy.github.io/styles/main.css">
+<link rel="alternate" type="application/atom+xml" title="2025/11/19 | Gridea - Atom Feed" href="https://llluchy.github.io/atom.xml">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Droid+Serif:400,700">
+
+
+
+    <meta name="description" content="今早堵炸了，本来出门就晚，30才出门的，结果还遇到个信号灯就是红灯，可算紧赶慢赶的没迟到。
+昨天白天吭哧吭哧的干活，周二，也没人找我，乐得悠闲，干的迷迷糊糊专注的。
+下单了十日终焉的全套实体书籍，等着到了，下午续听了小说，晚上在酒吧又用文字..." />
+    <meta name="keywords" content="" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.10.0/katex.min.css">
+    <script src="//cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.5.1/build/highlight.min.js"></script>
+  </head>
+  <body>
+    <div class="main">
+      <div class="main-content">
+        <div class="site-header">
+  <a href="https://llluchy.github.io">
+  <img class="avatar" src="https://llluchy.github.io/images/avatar.png?v=1763704508630" alt="">
+  </a>
+  <h1 class="site-title">
+    Gridea
+  </h1>
+  <p class="site-description">
+    温故而知新
+  </p>
+  <div class="menu-container">
+    
+      
+        <a href="https://llluchy.github.io" class="menu">
+          首页
+        </a>
+      
+    
+      
+        <a href="/archives" class="menu">
+          归档
+        </a>
+      
+    
+      
+        <a href="/tags" class="menu">
+          标签
+        </a>
+      
+    
+      
+        <a href="/post/about" class="menu">
+          关于
+        </a>
+      
+    
+  </div>
+  <div class="social-container">
+    
+      
+    
+      
+    
+      
+    
+      
+    
+      
+    
+  </div>
+</div>
+
+        <div class="post-detail">
+          <article class="post">
+            <h2 class="post-title">
+              2025/11/19
+            </h2>
+            <div class="post-info">
+              <span>
+                2025-11-20
+              </span>
+              <span>
+                1 min read
+              </span>
+              
+            </div>
+            
+            <div class="post-content-wrapper">
+              <div class="post-content" v-pre>
+                <p>今早堵炸了，本来出门就晚，30才出门的，结果还遇到个信号灯就是红灯，可算紧赶慢赶的没迟到。<br>
+昨天白天吭哧吭哧的干活，周二，也没人找我，乐得悠闲，干的迷迷糊糊专注的。<br>
+下单了十日终焉的全套实体书籍，等着到了，下午续听了小说，晚上在酒吧又用文字阅读了。<br>
+心理还是不平静，没有办法沉浸的享受。心理还是有问题的。没办法，基础条件不够好。<br>
+草，装尼玛臭逼，啥鸡毛态度呢。<br>
+晚上酒吧上班，没有啥人，但是心态也累，没得到足够的休息，今天是周三，还得去健身房，暂时还是不得休，看来得找办法从别的地方获取情绪补充。<br>
+行了，就记到这里吧。<br>
+啊，对了，今早主动还各种款，发现最终居然不够了，我这是花了多少啊，又得重新规划规划，节约了</p>
+
+              </div>
+              <div class="toc-container">
+                
+              </div>
+            </div>
+          </article>
+        </div>
+
+        
+          <div class="next-post">
+            <div class="next">下一篇</div>
+            <a href="https://llluchy.github.io/post/20251118/">
+              <h3 class="post-title">
+                2025/11/18
+              </h3>
+            </a>
+          </div>
+        
+
+        
+
+        <div class="site-footer">
+  Powered by <a href="https://github.com/getgridea/gridea" target="_blank">Gridea</a>
+  <a class="rss" href="https://llluchy.github.io/atom.xml" target="_blank">
+    <i class="ri-rss-line"></i> RSS
+  </a>
+</div>
+
+      </div>
+    </div>
+
+    <script>
+      hljs.initHighlightingOnLoad()
+
+      let mainNavLinks = document.querySelectorAll(".markdownIt-TOC a");
+
+      // This should probably be throttled.
+      // Especially because it triggers during smooth scrolling.
+      // https://lodash.com/docs/4.17.10#throttle
+      // You could do like...
+      // window.addEventListener("scroll", () => {
+      //    _.throttle(doThatStuff, 100);
+      // });
+      // Only not doing it here to keep this Pen dependency-free.
+
+      window.addEventListener("scroll", event => {
+        let fromTop = window.scrollY;
+
+        mainNavLinks.forEach((link, index) => {
+          let section = document.getElementById(decodeURI(link.hash).substring(1));
+          let nextSection = null
+          if (mainNavLinks[index + 1]) {
+            nextSection = document.getElementById(decodeURI(mainNavLinks[index + 1].hash).substring(1));
+          }
+          if (section.offsetTop <= fromTop) {
+            if (nextSection) {
+              if (nextSection.offsetTop > fromTop) {
+                link.classList.add("current");
+              } else {
+                link.classList.remove("current");    
+              }
+            } else {
+              link.classList.add("current");
+            }
+          } else {
+            link.classList.remove("current");
+          }
+        });
+      });
+
+    </script>
+  </body>
+</html>
